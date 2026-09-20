@@ -13,10 +13,6 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 header
-                if controller.isLevelMeterVisible {
-                    StereoLevelMeter(levels: controller.audioLevels)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
                 equalizer
                 footer
             }
@@ -24,8 +20,8 @@ struct ContentView: View {
         .frame(
             minWidth: 560,
             idealWidth: 960,
-            minHeight: controller.isLevelMeterVisible ? 640 : 590,
-            idealHeight: controller.isLevelMeterVisible ? 710 : 660
+            minHeight: controller.isLevelMeterVisible ? 614 : 590,
+            idealHeight: controller.isLevelMeterVisible ? 684 : 660
         )
         .background(WindowMaterialConfigurator())
         .animation(.snappy(duration: 0.22), value: controller.isLevelMeterVisible)
@@ -131,8 +127,8 @@ struct ContentView: View {
                 interactive: true,
                 in: Circle()
             )
-            .help(controller.isLevelMeterVisible ? "Hide audio levels" : "Show audio levels")
-            .accessibilityLabel(controller.isLevelMeterVisible ? "Hide audio levels" : "Show audio levels")
+            .help(controller.isLevelMeterVisible ? "Hide per-band levels" : "Show per-band levels")
+            .accessibilityLabel(controller.isLevelMeterVisible ? "Hide per-band levels" : "Show per-band levels")
 
             if controller.userPresets.contains(where: { $0.id == controller.selectedPresetID }) {
                 Button(role: .destructive) {
@@ -230,7 +226,8 @@ struct ContentView: View {
             GeometryReader { geometry in
                 let metrics = BandLayoutMetrics(
                     availableSize: geometry.size,
-                    bandCount: controller.bands.count
+                    bandCount: controller.bands.count,
+                    showsLevels: controller.isLevelMeterVisible
                 )
 
                 ScrollView(.horizontal) {
@@ -238,6 +235,9 @@ struct ContentView: View {
                         ForEach(Array(controller.bands.enumerated()), id: \.element.id) { index, band in
                             BandSlider(
                                 band: band,
+                                rmsDecibels: controller.audioLevels.rmsDecibels(at: index),
+                                peakDecibels: controller.audioLevels.peakDecibels(at: index),
+                                showsLevel: controller.isLevelMeterVisible,
                                 sliderLength: metrics.sliderLength,
                                 onGainChange: { controller.setGain($0, at: index) },
                                 onFrequencyChange: { controller.setFrequency($0, at: index) },
@@ -341,48 +341,13 @@ struct ContentView: View {
 
 }
 
-private struct StereoLevelMeter: View {
-    let levels: AudioLevels
-
-    var body: some View {
-        HStack(spacing: 16) {
-            Label("Output", systemImage: "waveform")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 82, alignment: .leading)
-
-            LevelMeterBar(
-                channel: "L",
-                rmsDecibels: levels.leftRMSDecibels,
-                peakDecibels: levels.leftPeakDecibels
-            )
-            LevelMeterBar(
-                channel: "R",
-                rmsDecibels: levels.rightRMSDecibels,
-                peakDecibels: levels.rightPeakDecibels
-            )
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider().opacity(0.45)
-        }
-    }
-}
-
-private struct LevelMeterBar: View {
-    let channel: String
+private struct BandLevelMeter: View {
+    let frequency: Float
     let rmsDecibels: Float
     let peakDecibels: Float
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(channel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 12)
-
+        VStack(spacing: 3) {
             GeometryReader { geometry in
                 let rmsWidth = geometry.size.width * normalized(rmsDecibels)
                 let peakPosition = geometry.size.width * normalized(peakDecibels)
@@ -401,7 +366,7 @@ private struct LevelMeterBar: View {
                             .frame(width: rmsWidth)
                     }
 
-                    if peakDecibels > AudioLevels.floorDecibels {
+                    if peakDecibels > BandAudioLevels.floorDecibels {
                         Rectangle()
                             .fill(.primary.opacity(0.9))
                             .frame(width: 2)
@@ -409,27 +374,29 @@ private struct LevelMeterBar: View {
                     }
                 }
             }
-            .frame(height: 8)
+            .frame(height: 5)
 
             Text(levelText)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .frame(width: 54, alignment: .trailing)
+                .frame(width: 54)
         }
-        .frame(minWidth: 150, maxWidth: .infinity)
+        .frame(width: 54, height: 18)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(channel) channel")
+        .accessibilityLabel("\(FrequencyText.format(frequency)) band level")
         .accessibilityValue(levelText)
     }
 
     private var levelText: String {
-        peakDecibels <= AudioLevels.floorDecibels
+        peakDecibels <= BandAudioLevels.floorDecibels
             ? "-inf dB"
-            : String(format: "%.1f dB", peakDecibels)
+            : String(format: "%.0f dB", peakDecibels)
     }
 
     private func normalized(_ decibels: Float) -> CGFloat {
-        let value = CGFloat((decibels - AudioLevels.floorDecibels) / -AudioLevels.floorDecibels)
+        let value = CGFloat(
+            (decibels - BandAudioLevels.floorDecibels) / -BandAudioLevels.floorDecibels
+        )
         return min(max(value, 0), 1)
     }
 }
@@ -473,6 +440,9 @@ private struct SavePresetPopover: View {
 
 private struct BandSlider: View {
     let band: EQBand
+    let rmsDecibels: Float
+    let peakDecibels: Float
+    let showsLevel: Bool
     let sliderLength: CGFloat
     let onGainChange: (Float) -> Void
     let onFrequencyChange: (Float) -> Void
@@ -485,6 +455,9 @@ private struct BandSlider: View {
 
     init(
         band: EQBand,
+        rmsDecibels: Float,
+        peakDecibels: Float,
+        showsLevel: Bool,
         sliderLength: CGFloat,
         onGainChange: @escaping (Float) -> Void,
         onFrequencyChange: @escaping (Float) -> Void,
@@ -492,6 +465,9 @@ private struct BandSlider: View {
         onQualityChange: @escaping (Float) -> Void
     ) {
         self.band = band
+        self.rmsDecibels = rmsDecibels
+        self.peakDecibels = peakDecibels
+        self.showsLevel = showsLevel
         self.sliderLength = sliderLength
         self.onGainChange = onGainChange
         self.onFrequencyChange = onFrequencyChange
@@ -507,6 +483,15 @@ private struct BandSlider: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(band.filterType.usesGain && abs(band.gain) > 0.01 ? Color.primary : Color.secondary)
                 .frame(width: 44)
+
+            if showsLevel {
+                BandLevelMeter(
+                    frequency: band.frequency,
+                    rmsDecibels: rmsDecibels,
+                    peakDecibels: peakDecibels
+                )
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
 
             Slider(
                 value: Binding(
@@ -612,12 +597,12 @@ private struct BandLayoutMetrics {
     let bandWidth: CGFloat
     let sliderLength: CGFloat
 
-    init(availableSize: CGSize, bandCount: Int) {
+    init(availableSize: CGSize, bandCount: Int, showsLevels: Bool) {
         let count = max(bandCount, 1)
         let totalSpacing = spacing * CGFloat(max(count - 1, 0))
         let fittedWidth = (availableSize.width - totalSpacing - 4) / CGFloat(count)
         bandWidth = min(max(fittedWidth, 62), 88)
-        sliderLength = min(max(availableSize.height - 142, 130), 360)
+        sliderLength = min(max(availableSize.height - (showsLevels ? 166 : 142), 130), 360)
     }
 }
 

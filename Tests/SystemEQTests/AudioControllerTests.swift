@@ -42,7 +42,7 @@ final class AudioControllerTests: XCTestCase {
 
         controller.toggleLevelMeter()
         XCTAssertFalse(controller.isLevelMeterVisible)
-        XCTAssertEqual(controller.audioLevels, .silent)
+        XCTAssertEqual(controller.audioLevels, .silent(count: controller.bands.count))
     }
 
     private func makeController() -> AudioController {

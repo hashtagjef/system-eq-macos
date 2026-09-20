@@ -15,7 +15,7 @@ final class AudioController: ObservableObject {
     @Published var selectedPresetID = "flat"
     @Published private(set) var userPresets: [EQPreset]
     @Published private(set) var isLevelMeterVisible = false
-    @Published private(set) var audioLevels = AudioLevels.silent
+    @Published private(set) var audioLevels: BandAudioLevels
 
     private let engine = SystemAudioEngine()
     private let presetStore: EQPresetStore
@@ -25,9 +25,11 @@ final class AudioController: ObservableObject {
     init(presetStore: EQPresetStore = EQPresetStore()) {
         self.presetStore = presetStore
         self.userPresets = presetStore.load()
-        bands = EQPreset.defaultFrequencies.enumerated().map {
+        let initialBands = EQPreset.defaultFrequencies.enumerated().map {
             EQBand(id: $0.offset, frequency: $0.element, gain: 0, filterType: .peaking)
         }
+        bands = initialBands
+        audioLevels = .silent(count: initialBands.count)
         engine.levelHandler = { [weak self] levels in
             DispatchQueue.main.async { [weak self] in
                 self?.receive(levels: levels)
@@ -70,7 +72,7 @@ final class AudioController: ObservableObject {
         updateTask?.cancel()
         updateTask = nil
         engine.stop()
-        audioLevels = .silent
+        audioLevels = .silent(count: bands.count)
         state = .off
     }
 
@@ -78,7 +80,7 @@ final class AudioController: ObservableObject {
         isLevelMeterVisible.toggle()
         engine.setMeteringEnabled(isLevelMeterVisible)
         if !isLevelMeterVisible {
-            audioLevels = .silent
+            audioLevels = .silent(count: bands.count)
         }
     }
 
@@ -117,6 +119,7 @@ final class AudioController: ObservableObject {
         nextBandID += 1
         bands.sort { $0.frequency < $1.frequency }
         selectedPresetID = "custom"
+        audioLevels = .silent(count: bands.count)
         scheduleEngineUpdate()
     }
 
@@ -124,6 +127,7 @@ final class AudioController: ObservableObject {
         guard canRemoveBand else { return }
         bands.removeLast()
         selectedPresetID = "custom"
+        audioLevels = .silent(count: bands.count)
         scheduleEngineUpdate()
     }
 
@@ -155,6 +159,7 @@ final class AudioController: ObservableObject {
         }
         preamp = preset.preamp
         automaticHeadroom = preset.automaticHeadroom
+        audioLevels = .silent(count: bands.count)
         scheduleEngineUpdate()
     }
 
@@ -245,16 +250,27 @@ final class AudioController: ObservableObject {
         }
     }
 
-    private func receive(levels: AudioLevels) {
+    private func receive(levels: BandAudioLevels) {
         guard isLevelMeterVisible, state.isRunning else {
-            audioLevels = .silent
+            audioLevels = .silent(count: bands.count)
             return
         }
-        audioLevels = AudioLevels(
-            leftRMS: smoothedLevel(current: audioLevels.leftRMS, incoming: levels.leftRMS, release: 0.82),
-            rightRMS: smoothedLevel(current: audioLevels.rightRMS, incoming: levels.rightRMS, release: 0.82),
-            leftPeak: smoothedLevel(current: audioLevels.leftPeak, incoming: levels.leftPeak, release: 0.94),
-            rightPeak: smoothedLevel(current: audioLevels.rightPeak, incoming: levels.rightPeak, release: 0.94)
+        let current = audioLevels
+        audioLevels = BandAudioLevels(
+            rms: bands.indices.map { index in
+                smoothedLevel(
+                    current: current.rms.indices.contains(index) ? current.rms[index] : 0,
+                    incoming: levels.rms.indices.contains(index) ? levels.rms[index] : 0,
+                    release: 0.82
+                )
+            },
+            peaks: bands.indices.map { index in
+                smoothedLevel(
+                    current: current.peaks.indices.contains(index) ? current.peaks[index] : 0,
+                    incoming: levels.peaks.indices.contains(index) ? levels.peaks[index] : 0,
+                    release: 0.94
+                )
+            }
         )
     }
 

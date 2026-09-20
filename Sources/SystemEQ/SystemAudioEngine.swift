@@ -7,13 +7,12 @@ final class SystemAudioEngine {
     private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
     private var ioProcID: AudioDeviceIOProcID?
     private var processor: EQProcessor?
+    private var levelAnalyzer: BandLevelAnalyzer?
     private var sampleRate: Float = 48_000
     private var isMeteringEnabled = false
-    private var meterLeft = LevelAccumulator()
-    private var meterRight = LevelAccumulator()
     private var meterFramesSinceUpdate = 0
     private(set) var outputDeviceName = ""
-    var levelHandler: ((AudioLevels) -> Void)?
+    var levelHandler: ((BandAudioLevels) -> Void)?
 
     var isRunning: Bool { ioProcID != nil }
 
@@ -97,6 +96,7 @@ final class SystemAudioEngine {
                 bypassed: bypassed
             )
             self.processor = processor
+            levelAnalyzer = BandLevelAnalyzer(frequencies: frequencies, sampleRate: sampleRate)
 
             var createdIOProc: AudioDeviceIOProcID?
             try checkOSStatus(
@@ -140,6 +140,7 @@ final class SystemAudioEngine {
                 sampleRate: rate,
                 bypassed: bypassed
             )
+            self?.levelAnalyzer?.update(frequencies: frequencies, sampleRate: rate)
         }
     }
 
@@ -160,6 +161,7 @@ final class SystemAudioEngine {
             self.ioProcID = nil
         }
         processor = nil
+        levelAnalyzer = nil
         resetMeterAccumulators()
 
         if aggregateDeviceID != kAudioObjectUnknown {
@@ -204,27 +206,22 @@ final class SystemAudioEngine {
 
         if inputs.count >= 2, outputs.count >= 2 {
             let channels = min(2, min(inputs.count, outputs.count))
-            var left = LevelAccumulator()
-            var right = LevelAccumulator()
+            var frameCount = 0
             for channel in 0..<channels {
                 guard let sourceData = inputs[channel].mData, let destinationData = outputs[channel].mData else { continue }
                 let frames = min(inputs[channel].mDataByteSize, outputs[channel].mDataByteSize) / UInt32(MemoryLayout<Float>.size)
                 let source = sourceData.assumingMemoryBound(to: Float.self)
                 let destination = destinationData.assumingMemoryBound(to: Float.self)
+                frameCount = max(frameCount, Int(frames))
                 for frame in 0..<Int(frames) {
                     let output = processor.process(source[frame], channel: channel)
                     destination[frame] = output
                     if isMeteringEnabled {
-                        if channel == 0 {
-                            left.add(output)
-                        } else {
-                            right.add(output)
-                        }
+                        levelAnalyzer?.process(output, channel: channel)
                     }
                 }
             }
-            if channels == 1 { right = left }
-            accumulateMeter(left: left, right: right)
+            publishMeterIfNeeded(frameCount: frameCount)
             return
         }
 
@@ -233,48 +230,85 @@ final class SystemAudioEngine {
         let samples = min(inputs[0].mDataByteSize, outputs[0].mDataByteSize) / UInt32(MemoryLayout<Float>.size)
         let source = sourceData.assumingMemoryBound(to: Float.self)
         let destination = destinationData.assumingMemoryBound(to: Float.self)
-        var left = LevelAccumulator()
-        var right = LevelAccumulator()
         for sampleIndex in 0..<Int(samples) {
             let channel = sampleIndex % channels
             let output = processor.process(source[sampleIndex], channel: channel)
             destination[sampleIndex] = output
             if isMeteringEnabled {
-                if channel == 0 {
-                    left.add(output)
-                } else if channel == 1 {
-                    right.add(output)
-                }
+                levelAnalyzer?.process(output, channel: min(channel, 1))
             }
         }
-        if channels == 1 { right = left }
-        accumulateMeter(left: left, right: right)
+        publishMeterIfNeeded(frameCount: Int(samples) / channels)
     }
 
-    private func accumulateMeter(left: LevelAccumulator, right: LevelAccumulator) {
-        guard isMeteringEnabled else { return }
-        meterLeft.merge(left)
-        meterRight.merge(right)
-        meterFramesSinceUpdate += max(left.sampleCount, right.sampleCount)
+    private func publishMeterIfNeeded(frameCount: Int) {
+        guard isMeteringEnabled, let levelAnalyzer else { return }
+        meterFramesSinceUpdate += frameCount
 
         let updateInterval = max(Int(sampleRate / 30), 1)
         guard meterFramesSinceUpdate >= updateInterval else { return }
 
-        levelHandler?(
-            AudioLevels(
-                leftRMS: meterLeft.rootMeanSquare,
-                rightRMS: meterRight.rootMeanSquare,
-                leftPeak: meterLeft.peak,
-                rightPeak: meterRight.peak
-            )
-        )
+        levelHandler?(levelAnalyzer.takeLevels())
         resetMeterAccumulators()
     }
 
     private func resetMeterAccumulators() {
-        meterLeft = LevelAccumulator()
-        meterRight = LevelAccumulator()
+        levelAnalyzer?.resetLevels()
         meterFramesSinceUpdate = 0
+    }
+}
+
+final class BandLevelAnalyzer {
+    private var coefficients: [BiquadCoefficients] = []
+    private var states: [[BiquadState]] = []
+    private var accumulators: [LevelAccumulator] = []
+    private var frequencies: [Float] = []
+    private var sampleRate: Float = 0
+
+    init(frequencies: [Float], sampleRate: Float) {
+        update(frequencies: frequencies, sampleRate: sampleRate)
+    }
+
+    func update(frequencies: [Float], sampleRate: Float) {
+        guard frequencies != self.frequencies || sampleRate != self.sampleRate else { return }
+        self.frequencies = frequencies
+        self.sampleRate = sampleRate
+        coefficients = frequencies.map {
+            BiquadCoefficients.filter(
+                type: .bandPass,
+                frequency: $0,
+                gain: 0,
+                quality: 1.41,
+                sampleRate: sampleRate
+            )
+        }
+        states = Array(
+            repeating: Array(repeating: BiquadState(), count: frequencies.count),
+            count: 2
+        )
+        resetLevels()
+    }
+
+    @inline(__always)
+    func process(_ sample: Float, channel: Int) {
+        let analyzerChannel = min(max(channel, 0), states.count - 1)
+        for band in coefficients.indices {
+            let filtered = states[analyzerChannel][band].process(sample, coefficients: coefficients[band])
+            accumulators[band].add(filtered)
+        }
+    }
+
+    func takeLevels() -> BandAudioLevels {
+        let levels = BandAudioLevels(
+            rms: accumulators.map(\.rootMeanSquare),
+            peaks: accumulators.map(\.peak)
+        )
+        resetLevels()
+        return levels
+    }
+
+    func resetLevels() {
+        accumulators = Array(repeating: LevelAccumulator(), count: coefficients.count)
     }
 }
 
@@ -295,9 +329,4 @@ struct LevelAccumulator {
         sampleCount += 1
     }
 
-    mutating func merge(_ other: LevelAccumulator) {
-        sumOfSquares += other.sumOfSquares
-        peak = max(peak, other.peak)
-        sampleCount += other.sampleCount
-    }
 }

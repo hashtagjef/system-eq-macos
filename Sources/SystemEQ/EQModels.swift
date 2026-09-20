@@ -191,19 +191,26 @@ struct EQPresetStore {
     }
 }
 
-struct AudioLevels: Equatable, Sendable {
+struct BandAudioLevels: Equatable, Sendable {
     static let floorDecibels: Float = -60
-    static let silent = AudioLevels(leftRMS: 0, rightRMS: 0, leftPeak: 0, rightPeak: 0)
 
-    let leftRMS: Float
-    let rightRMS: Float
-    let leftPeak: Float
-    let rightPeak: Float
+    let rms: [Float]
+    let peaks: [Float]
 
-    var leftRMSDecibels: Float { Self.decibels(for: leftRMS) }
-    var rightRMSDecibels: Float { Self.decibels(for: rightRMS) }
-    var leftPeakDecibels: Float { Self.decibels(for: leftPeak) }
-    var rightPeakDecibels: Float { Self.decibels(for: rightPeak) }
+    static func silent(count: Int) -> Self {
+        BandAudioLevels(
+            rms: Array(repeating: 0, count: max(count, 0)),
+            peaks: Array(repeating: 0, count: max(count, 0))
+        )
+    }
+
+    func rmsDecibels(at index: Int) -> Float {
+        Self.decibels(for: rms.indices.contains(index) ? rms[index] : 0)
+    }
+
+    func peakDecibels(at index: Int) -> Float {
+        Self.decibels(for: peaks.indices.contains(index) ? peaks[index] : 0)
+    }
 
     static func decibels(for amplitude: Float) -> Float {
         guard amplitude.isFinite, amplitude > 0 else { return floorDecibels }
