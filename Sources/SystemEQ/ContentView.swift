@@ -8,7 +8,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            Color(nsColor: .underPageBackgroundColor)
+            TranslucentWindowBackground()
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -18,6 +18,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 860, idealWidth: 960, minHeight: 590, idealHeight: 660)
+        .background(WindowMaterialConfigurator())
     }
 
     private var header: some View {
@@ -459,4 +460,37 @@ private extension View {
 private enum GlassStyle {
     case regular
     case clear
+}
+
+private struct TranslucentWindowBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .underWindowBackground
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+private struct WindowMaterialConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        configureWindow(for: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        configureWindow(for: nsView)
+    }
+
+    private func configureWindow(for view: NSView) {
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.titlebarAppearsTransparent = true
+        }
+    }
 }
