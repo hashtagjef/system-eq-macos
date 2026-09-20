@@ -238,6 +238,7 @@ struct ContentView: View {
                                 rmsDecibels: controller.audioLevels.rmsDecibels(at: index),
                                 peakDecibels: controller.audioLevels.peakDecibels(at: index),
                                 showsLevel: controller.isLevelMeterVisible,
+                                controlWidth: metrics.controlWidth,
                                 sliderLength: metrics.sliderLength,
                                 onGainChange: { controller.setGain($0, at: index) },
                                 onFrequencyChange: { controller.setFrequency($0, at: index) },
@@ -247,7 +248,11 @@ struct ContentView: View {
                             .frame(width: metrics.bandWidth)
                         }
                     }
-                    .frame(minWidth: geometry.size.width, alignment: .center)
+                    .frame(
+                        minWidth: geometry.size.width,
+                        minHeight: geometry.size.height,
+                        alignment: .top
+                    )
                     .padding(.horizontal, 2)
                     .padding(.vertical, 2)
                 }
@@ -345,6 +350,7 @@ private struct BandLevelMeter: View {
     let frequency: Float
     let rmsDecibels: Float
     let peakDecibels: Float
+    let width: CGFloat
 
     var body: some View {
         VStack(spacing: 3) {
@@ -379,9 +385,9 @@ private struct BandLevelMeter: View {
             Text(levelText)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .frame(width: 54)
+                .frame(width: width)
         }
-        .frame(width: 54, height: 18)
+        .frame(width: width, height: 18)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(FrequencyText.format(frequency)) band level")
         .accessibilityValue(levelText)
@@ -443,6 +449,7 @@ private struct BandSlider: View {
     let rmsDecibels: Float
     let peakDecibels: Float
     let showsLevel: Bool
+    let controlWidth: CGFloat
     let sliderLength: CGFloat
     let onGainChange: (Float) -> Void
     let onFrequencyChange: (Float) -> Void
@@ -458,6 +465,7 @@ private struct BandSlider: View {
         rmsDecibels: Float,
         peakDecibels: Float,
         showsLevel: Bool,
+        controlWidth: CGFloat,
         sliderLength: CGFloat,
         onGainChange: @escaping (Float) -> Void,
         onFrequencyChange: @escaping (Float) -> Void,
@@ -468,6 +476,7 @@ private struct BandSlider: View {
         self.rmsDecibels = rmsDecibels
         self.peakDecibels = peakDecibels
         self.showsLevel = showsLevel
+        self.controlWidth = controlWidth
         self.sliderLength = sliderLength
         self.onGainChange = onGainChange
         self.onFrequencyChange = onFrequencyChange
@@ -488,7 +497,8 @@ private struct BandSlider: View {
                 BandLevelMeter(
                     frequency: band.frequency,
                     rmsDecibels: rmsDecibels,
-                    peakDecibels: peakDecibels
+                    peakDecibels: peakDecibels,
+                    width: controlWidth
                 )
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
@@ -511,7 +521,7 @@ private struct BandSlider: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.caption, design: .monospaced).weight(.medium))
                 .multilineTextAlignment(.center)
-                .frame(width: 56)
+                .frame(width: controlWidth)
                 .focused($isEditingFrequency)
                 .onSubmit(commitFrequency)
                 .onChange(of: isEditingFrequency) { _, isFocused in
@@ -536,7 +546,7 @@ private struct BandSlider: View {
                     .frame(width: 40)
             }
             .menuStyle(.borderlessButton)
-            .frame(width: 56)
+            .frame(width: controlWidth)
             .help(band.filterType.name)
             .accessibilityLabel("Filter: \(band.filterType.name)")
 
@@ -555,7 +565,7 @@ private struct BandSlider: View {
                         if !isFocused { commitQuality() }
                     }
             }
-            .frame(width: 64)
+            .frame(width: controlWidth)
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 3)
@@ -593,16 +603,19 @@ private struct BandSlider: View {
 }
 
 private struct BandLayoutMetrics {
-    let spacing: CGFloat = 10
+    let spacing: CGFloat
     let bandWidth: CGFloat
+    let controlWidth: CGFloat
     let sliderLength: CGFloat
 
     init(availableSize: CGSize, bandCount: Int, showsLevels: Bool) {
         let count = max(bandCount, 1)
+        spacing = min(max(availableSize.width / 100, 10), 20)
         let totalSpacing = spacing * CGFloat(max(count - 1, 0))
         let fittedWidth = (availableSize.width - totalSpacing - 4) / CGFloat(count)
-        bandWidth = min(max(fittedWidth, 62), 88)
-        sliderLength = min(max(availableSize.height - (showsLevels ? 166 : 142), 130), 360)
+        bandWidth = min(max(fittedWidth, 62), 240)
+        controlWidth = min(max(bandWidth - 32, 56), 120)
+        sliderLength = min(max(availableSize.height - (showsLevels ? 166 : 142), 130), 840)
     }
 }
 
