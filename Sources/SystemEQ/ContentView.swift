@@ -7,91 +7,122 @@ struct ContentView: View {
     @State private var presetName = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            equalizer
-            Divider()
-            footer
+        ZStack {
+            Color(nsColor: .underPageBackgroundColor)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                header
+                equalizer
+                footer
+            }
         }
-        .frame(minWidth: 820, idealWidth: 920, minHeight: 540, idealHeight: 620)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 860, idealWidth: 960, minHeight: 590, idealHeight: 660)
     }
 
     private var header: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(spacing: 14) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 38, height: 38)
+                .liquidGlass(.clear, interactive: false, in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
                 Text("System EQ")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                 statusLabel
+                    .font(.caption)
             }
 
             Spacer()
 
-            Picker("Preset", selection: presetSelection) {
-                Section("Built-in") {
-                    ForEach(EQPreset.builtIn) { preset in
-                        Text(preset.name).tag(preset.id)
-                    }
-                }
-                if !controller.userPresets.isEmpty {
-                    Section("Saved") {
-                        ForEach(controller.userPresets) { preset in
+            HStack(spacing: 8) {
+                Picker("Preset", selection: presetSelection) {
+                    Section("Built-in") {
+                        ForEach(EQPreset.builtIn) { preset in
                             Text(preset.name).tag(preset.id)
                         }
                     }
+                    if !controller.userPresets.isEmpty {
+                        Section("Saved") {
+                            ForEach(controller.userPresets) { preset in
+                                Text(preset.name).tag(preset.id)
+                            }
+                        }
+                    }
+                    if controller.selectedPresetID == "custom" {
+                        Text("Custom").tag("custom")
+                    }
                 }
-                if controller.selectedPresetID == "custom" {
-                    Text("Custom").tag("custom")
-                }
-            }
-            .labelsHidden()
-            .frame(width: 150)
+                .labelsHidden()
+                .frame(width: 170)
 
-            Button {
-                presetName = controller.preset(withID: controller.selectedPresetID)?.name ?? ""
-                isShowingSavePreset = true
-            } label: {
-                Image(systemName: "square.and.arrow.down")
-            }
-            .help("Save current settings as a preset")
-            .popover(isPresented: $isShowingSavePreset, arrowEdge: .top) {
-                SavePresetPopover(name: $presetName) {
-                    controller.savePreset(named: presetName)
-                    isShowingSavePreset = false
-                }
-            }
-
-            if controller.userPresets.contains(where: { $0.id == controller.selectedPresetID }) {
-                Button(role: .destructive) {
-                    isShowingDeleteConfirmation = true
+                Button {
+                    presetName = controller.preset(withID: controller.selectedPresetID)?.name ?? ""
+                    isShowingSavePreset = true
                 } label: {
-                    Image(systemName: "trash")
+                    Image(systemName: "square.and.arrow.down")
+                        .frame(width: 28, height: 28)
                 }
-                .help("Delete selected preset")
-                .confirmationDialog(
-                    "Delete this preset?",
-                    isPresented: $isShowingDeleteConfirmation,
-                    titleVisibility: .visible
-                ) {
-                    Button("Delete Preset", role: .destructive) {
-                        controller.deleteSelectedPreset()
+                .buttonStyle(.plain)
+                .liquidGlass(.clear, interactive: true, in: Circle())
+                .help("Save current settings as a preset")
+                .popover(isPresented: $isShowingSavePreset, arrowEdge: .top) {
+                    SavePresetPopover(name: $presetName) {
+                        controller.savePreset(named: presetName)
+                        isShowingSavePreset = false
+                    }
+                }
+
+                if controller.userPresets.contains(where: { $0.id == controller.selectedPresetID }) {
+                    Button(role: .destructive) {
+                        isShowingDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .liquidGlass(.clear, interactive: true, in: Circle())
+                    .help("Delete selected preset")
+                    .confirmationDialog(
+                        "Delete this preset?",
+                        isPresented: $isShowingDeleteConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete Preset", role: .destructive) {
+                            controller.deleteSelectedPreset()
+                        }
                     }
                 }
             }
+            .padding(6)
+            .liquidGlass(.regular, interactive: false, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             Button {
                 controller.toggleEngine()
             } label: {
-                Label(controller.state.isRunning ? "Turn Off" : "Turn On", systemImage: "power")
-                    .frame(minWidth: 92)
+                Image(systemName: "power")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 38, height: 38)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(controller.state.isRunning ? .orange : .green)
+            .buttonStyle(.plain)
+            .foregroundStyle(controller.state.isRunning ? Color.orange : Color.green)
+            .liquidGlass(
+                .regular,
+                tint: controller.state.isRunning ? .orange.opacity(0.22) : .green.opacity(0.22),
+                interactive: true,
+                in: Circle()
+            )
             .disabled(controller.state == .starting)
+            .help(controller.state.isRunning ? "Turn System EQ off" : "Turn System EQ on")
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.45)
+        }
     }
 
     @ViewBuilder
@@ -114,10 +145,10 @@ struct ContentView: View {
     }
 
     private var equalizer: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             HStack {
-                Text("EQUALIZER")
-                    .font(.caption.weight(.semibold))
+                Label("Equalizer", systemImage: "slider.vertical.3")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Stepper(
@@ -128,16 +159,21 @@ struct ContentView: View {
                 .disabled(!controller.canAddBand && !controller.canRemoveBand)
                 .help("Add a band or remove the rightmost band")
 
-                Button("Reset") {
+                Button {
                     if let flat = EQPreset.builtIn.first {
                         controller.applyPreset(flat)
                     }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .frame(width: 26, height: 26)
                 }
                 .buttonStyle(.plain)
+                .liquidGlass(.clear, interactive: true, in: Circle())
+                .help("Reset all bands")
             }
 
             ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 18) {
+                HStack(alignment: .top, spacing: 10) {
                     ForEach(Array(controller.bands.enumerated()), id: \.element.id) { index, band in
                         BandSlider(
                             band: band,
@@ -146,23 +182,26 @@ struct ContentView: View {
                             onFilterChange: { controller.setFilterType($0, at: index) },
                             onQualityChange: { controller.setQuality($0, at: index) }
                         )
-                        .frame(width: 64)
+                        .frame(width: 70)
                     }
                 }
                 .padding(.horizontal, 2)
+                .padding(.vertical, 2)
             }
             .frame(maxWidth: .infinity)
+            .scrollIndicators(.never)
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 24)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
         .frame(maxHeight: .infinity)
     }
 
     private var footer: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 22) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("Preamp")
+                    Label("Preamp", systemImage: "dial.medium")
+                        .font(.subheadline.weight(.medium))
                     Spacer()
                     Text(String(format: "%+.1f dB", controller.effectivePreamp))
                         .monospacedDigit()
@@ -180,7 +219,7 @@ struct ContentView: View {
                     step: 0.5
                 )
             }
-            .frame(width: 270)
+            .frame(width: 290)
 
             Toggle("Automatic headroom", isOn: Binding(
                 get: { controller.automaticHeadroom },
@@ -189,6 +228,7 @@ struct ContentView: View {
                     controller.controlsChanged()
                 }
             ))
+            .toggleStyle(.switch)
 
             Toggle("Bypass filters", isOn: Binding(
                 get: { controller.bypassed },
@@ -197,11 +237,16 @@ struct ContentView: View {
                     controller.controlsChanged(markPresetCustom: false)
                 }
             ))
+            .toggleStyle(.switch)
 
             Spacer()
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Divider().opacity(0.45)
+        }
     }
 
     private var presetSelection: Binding<String> {
@@ -351,7 +396,10 @@ private struct BandSlider: View {
             }
             .frame(width: 64)
         }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 3)
         .frame(maxWidth: .infinity)
+        .liquidGlass(.clear, interactive: false, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .onChange(of: band.frequency) { _, newFrequency in
             frequencyText = FrequencyText.format(newFrequency)
         }
@@ -381,4 +429,34 @@ private struct BandSlider: View {
             onQualityChange(quality)
         }
     }
+}
+
+private extension View {
+    @ViewBuilder
+    func liquidGlass<S: Shape>(
+        _ glass: GlassStyle,
+        tint: Color? = nil,
+        interactive: Bool,
+        in shape: S
+    ) -> some View {
+        if #available(macOS 26.0, *) {
+            switch glass {
+            case .regular:
+                self.glassEffect(.regular.tint(tint).interactive(interactive), in: shape)
+            case .clear:
+                self.glassEffect(.clear.tint(tint).interactive(interactive), in: shape)
+            }
+        } else {
+            self
+                .background(.regularMaterial, in: shape)
+                .overlay {
+                    shape.stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private enum GlassStyle {
+    case regular
+    case clear
 }
