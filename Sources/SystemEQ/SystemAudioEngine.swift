@@ -8,7 +8,12 @@ final class SystemAudioEngine {
     private var ioProcID: AudioDeviceIOProcID?
     private var processor: EQProcessor?
     private var sampleRate: Float = 48_000
+    private var isMeteringEnabled = false
+    private var meterLeft = LevelAccumulator()
+    private var meterRight = LevelAccumulator()
+    private var meterFramesSinceUpdate = 0
     private(set) var outputDeviceName = ""
+    var levelHandler: ((AudioLevels) -> Void)?
 
     var isRunning: Bool { ioProcID != nil }
 
@@ -138,6 +143,16 @@ final class SystemAudioEngine {
         }
     }
 
+    func setMeteringEnabled(_ enabled: Bool) {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            self.isMeteringEnabled = enabled
+            if !enabled {
+                self.resetMeterAccumulators()
+            }
+        }
+    }
+
     func stop() {
         if let ioProcID {
             AudioDeviceStop(aggregateDeviceID, ioProcID)
@@ -145,6 +160,7 @@ final class SystemAudioEngine {
             self.ioProcID = nil
         }
         processor = nil
+        resetMeterAccumulators()
 
         if aggregateDeviceID != kAudioObjectUnknown {
             AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
@@ -188,15 +204,27 @@ final class SystemAudioEngine {
 
         if inputs.count >= 2, outputs.count >= 2 {
             let channels = min(2, min(inputs.count, outputs.count))
+            var left = LevelAccumulator()
+            var right = LevelAccumulator()
             for channel in 0..<channels {
                 guard let sourceData = inputs[channel].mData, let destinationData = outputs[channel].mData else { continue }
                 let frames = min(inputs[channel].mDataByteSize, outputs[channel].mDataByteSize) / UInt32(MemoryLayout<Float>.size)
                 let source = sourceData.assumingMemoryBound(to: Float.self)
                 let destination = destinationData.assumingMemoryBound(to: Float.self)
                 for frame in 0..<Int(frames) {
-                    destination[frame] = processor.process(source[frame], channel: channel)
+                    let output = processor.process(source[frame], channel: channel)
+                    destination[frame] = output
+                    if isMeteringEnabled {
+                        if channel == 0 {
+                            left.add(output)
+                        } else {
+                            right.add(output)
+                        }
+                    }
                 }
             }
+            if channels == 1 { right = left }
+            accumulateMeter(left: left, right: right)
             return
         }
 
@@ -205,8 +233,71 @@ final class SystemAudioEngine {
         let samples = min(inputs[0].mDataByteSize, outputs[0].mDataByteSize) / UInt32(MemoryLayout<Float>.size)
         let source = sourceData.assumingMemoryBound(to: Float.self)
         let destination = destinationData.assumingMemoryBound(to: Float.self)
+        var left = LevelAccumulator()
+        var right = LevelAccumulator()
         for sampleIndex in 0..<Int(samples) {
-            destination[sampleIndex] = processor.process(source[sampleIndex], channel: sampleIndex % channels)
+            let channel = sampleIndex % channels
+            let output = processor.process(source[sampleIndex], channel: channel)
+            destination[sampleIndex] = output
+            if isMeteringEnabled {
+                if channel == 0 {
+                    left.add(output)
+                } else if channel == 1 {
+                    right.add(output)
+                }
+            }
         }
+        if channels == 1 { right = left }
+        accumulateMeter(left: left, right: right)
+    }
+
+    private func accumulateMeter(left: LevelAccumulator, right: LevelAccumulator) {
+        guard isMeteringEnabled else { return }
+        meterLeft.merge(left)
+        meterRight.merge(right)
+        meterFramesSinceUpdate += max(left.sampleCount, right.sampleCount)
+
+        let updateInterval = max(Int(sampleRate / 30), 1)
+        guard meterFramesSinceUpdate >= updateInterval else { return }
+
+        levelHandler?(
+            AudioLevels(
+                leftRMS: meterLeft.rootMeanSquare,
+                rightRMS: meterRight.rootMeanSquare,
+                leftPeak: meterLeft.peak,
+                rightPeak: meterRight.peak
+            )
+        )
+        resetMeterAccumulators()
+    }
+
+    private func resetMeterAccumulators() {
+        meterLeft = LevelAccumulator()
+        meterRight = LevelAccumulator()
+        meterFramesSinceUpdate = 0
+    }
+}
+
+struct LevelAccumulator {
+    private(set) var sumOfSquares: Float = 0
+    private(set) var peak: Float = 0
+    private(set) var sampleCount = 0
+
+    var rootMeanSquare: Float {
+        guard sampleCount > 0 else { return 0 }
+        return sqrtf(sumOfSquares / Float(sampleCount))
+    }
+
+    mutating func add(_ sample: Float) {
+        guard sample.isFinite else { return }
+        sumOfSquares += sample * sample
+        peak = max(peak, abs(sample))
+        sampleCount += 1
+    }
+
+    mutating func merge(_ other: LevelAccumulator) {
+        sumOfSquares += other.sumOfSquares
+        peak = max(peak, other.peak)
+        sampleCount += other.sampleCount
     }
 }

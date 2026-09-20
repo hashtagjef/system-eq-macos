@@ -34,6 +34,17 @@ final class AudioControllerTests: XCTestCase {
         XCTAssertEqual(controller.bands.map(\.quality), preset.qualities)
     }
 
+    func testLevelMeterCanBeShownAndHidden() {
+        let controller = makeController()
+
+        controller.toggleLevelMeter()
+        XCTAssertTrue(controller.isLevelMeterVisible)
+
+        controller.toggleLevelMeter()
+        XCTAssertFalse(controller.isLevelMeterVisible)
+        XCTAssertEqual(controller.audioLevels, .silent)
+    }
+
     private func makeController() -> AudioController {
         let suite = "SystemEQTests.AudioController.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

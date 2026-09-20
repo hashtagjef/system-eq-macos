@@ -191,6 +191,26 @@ struct EQPresetStore {
     }
 }
 
+struct AudioLevels: Equatable, Sendable {
+    static let floorDecibels: Float = -60
+    static let silent = AudioLevels(leftRMS: 0, rightRMS: 0, leftPeak: 0, rightPeak: 0)
+
+    let leftRMS: Float
+    let rightRMS: Float
+    let leftPeak: Float
+    let rightPeak: Float
+
+    var leftRMSDecibels: Float { Self.decibels(for: leftRMS) }
+    var rightRMSDecibels: Float { Self.decibels(for: rightRMS) }
+    var leftPeakDecibels: Float { Self.decibels(for: leftPeak) }
+    var rightPeakDecibels: Float { Self.decibels(for: rightPeak) }
+
+    static func decibels(for amplitude: Float) -> Float {
+        guard amplitude.isFinite, amplitude > 0 else { return floorDecibels }
+        return min(0, max(floorDecibels, 20 * log10f(amplitude)))
+    }
+}
+
 enum EngineState: Equatable {
     case off
     case starting

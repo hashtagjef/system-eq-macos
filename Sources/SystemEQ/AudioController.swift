@@ -14,6 +14,8 @@ final class AudioController: ObservableObject {
     @Published var bypassed = false
     @Published var selectedPresetID = "flat"
     @Published private(set) var userPresets: [EQPreset]
+    @Published private(set) var isLevelMeterVisible = false
+    @Published private(set) var audioLevels = AudioLevels.silent
 
     private let engine = SystemAudioEngine()
     private let presetStore: EQPresetStore
@@ -25,6 +27,11 @@ final class AudioController: ObservableObject {
         self.userPresets = presetStore.load()
         bands = EQPreset.defaultFrequencies.enumerated().map {
             EQBand(id: $0.offset, frequency: $0.element, gain: 0, filterType: .peaking)
+        }
+        engine.levelHandler = { [weak self] levels in
+            DispatchQueue.main.async { [weak self] in
+                self?.receive(levels: levels)
+            }
         }
     }
 
@@ -63,7 +70,16 @@ final class AudioController: ObservableObject {
         updateTask?.cancel()
         updateTask = nil
         engine.stop()
+        audioLevels = .silent
         state = .off
+    }
+
+    func toggleLevelMeter() {
+        isLevelMeterVisible.toggle()
+        engine.setMeteringEnabled(isLevelMeterVisible)
+        if !isLevelMeterVisible {
+            audioLevels = .silent
+        }
     }
 
     func setGain(_ gain: Float, at index: Int) {
@@ -227,5 +243,22 @@ final class AudioController: ObservableObject {
                 bypassed: self.bypassed
             )
         }
+    }
+
+    private func receive(levels: AudioLevels) {
+        guard isLevelMeterVisible, state.isRunning else {
+            audioLevels = .silent
+            return
+        }
+        audioLevels = AudioLevels(
+            leftRMS: smoothedLevel(current: audioLevels.leftRMS, incoming: levels.leftRMS, release: 0.82),
+            rightRMS: smoothedLevel(current: audioLevels.rightRMS, incoming: levels.rightRMS, release: 0.82),
+            leftPeak: smoothedLevel(current: audioLevels.leftPeak, incoming: levels.leftPeak, release: 0.94),
+            rightPeak: smoothedLevel(current: audioLevels.rightPeak, incoming: levels.rightPeak, release: 0.94)
+        )
+    }
+
+    private func smoothedLevel(current: Float, incoming: Float, release: Float) -> Float {
+        incoming >= current ? incoming : max(incoming, current * release)
     }
 }

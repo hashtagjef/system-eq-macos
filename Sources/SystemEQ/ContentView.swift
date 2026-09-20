@@ -13,12 +13,22 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 header
+                if controller.isLevelMeterVisible {
+                    StereoLevelMeter(levels: controller.audioLevels)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 equalizer
                 footer
             }
         }
-        .frame(minWidth: 560, idealWidth: 960, minHeight: 590, idealHeight: 660)
+        .frame(
+            minWidth: 560,
+            idealWidth: 960,
+            minHeight: controller.isLevelMeterVisible ? 640 : 590,
+            idealHeight: controller.isLevelMeterVisible ? 710 : 660
+        )
         .background(WindowMaterialConfigurator())
+        .animation(.snappy(duration: 0.22), value: controller.isLevelMeterVisible)
     }
 
     private var header: some View {
@@ -106,6 +116,23 @@ struct ContentView: View {
                     isShowingSavePreset = false
                 }
             }
+
+            Button {
+                controller.toggleLevelMeter()
+            } label: {
+                Image(systemName: "chart.bar.fill")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(controller.isLevelMeterVisible ? Color.accentColor : Color.primary)
+            .liquidGlass(
+                .clear,
+                tint: controller.isLevelMeterVisible ? Color.accentColor.opacity(0.2) : nil,
+                interactive: true,
+                in: Circle()
+            )
+            .help(controller.isLevelMeterVisible ? "Hide audio levels" : "Show audio levels")
+            .accessibilityLabel(controller.isLevelMeterVisible ? "Hide audio levels" : "Show audio levels")
 
             if controller.userPresets.contains(where: { $0.id == controller.selectedPresetID }) {
                 Button(role: .destructive) {
@@ -312,6 +339,99 @@ struct ContentView: View {
         )
     }
 
+}
+
+private struct StereoLevelMeter: View {
+    let levels: AudioLevels
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Label("Output", systemImage: "waveform")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 82, alignment: .leading)
+
+            LevelMeterBar(
+                channel: "L",
+                rmsDecibels: levels.leftRMSDecibels,
+                peakDecibels: levels.leftPeakDecibels
+            )
+            LevelMeterBar(
+                channel: "R",
+                rmsDecibels: levels.rightRMSDecibels,
+                peakDecibels: levels.rightPeakDecibels
+            )
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.45)
+        }
+    }
+}
+
+private struct LevelMeterBar: View {
+    let channel: String
+    let rmsDecibels: Float
+    let peakDecibels: Float
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(channel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 12)
+
+            GeometryReader { geometry in
+                let rmsWidth = geometry.size.width * normalized(rmsDecibels)
+                let peakPosition = geometry.size.width * normalized(peakDecibels)
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.primary.opacity(0.10))
+
+                    LinearGradient(
+                        colors: [.green, .green, .yellow, .orange, .red],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .mask(alignment: .leading) {
+                        Capsule()
+                            .frame(width: rmsWidth)
+                    }
+
+                    if peakDecibels > AudioLevels.floorDecibels {
+                        Rectangle()
+                            .fill(.primary.opacity(0.9))
+                            .frame(width: 2)
+                            .offset(x: max(0, min(peakPosition - 1, geometry.size.width - 2)))
+                    }
+                }
+            }
+            .frame(height: 8)
+
+            Text(levelText)
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 54, alignment: .trailing)
+        }
+        .frame(minWidth: 150, maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(channel) channel")
+        .accessibilityValue(levelText)
+    }
+
+    private var levelText: String {
+        peakDecibels <= AudioLevels.floorDecibels
+            ? "-inf dB"
+            : String(format: "%.1f dB", peakDecibels)
+    }
+
+    private func normalized(_ decibels: Float) -> CGFloat {
+        let value = CGFloat((decibels - AudioLevels.floorDecibels) / -AudioLevels.floorDecibels)
+        return min(max(value, 0), 1)
+    }
 }
 
 private struct SavePresetPopover: View {

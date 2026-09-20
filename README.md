@@ -25,4 +25,6 @@ Edit the frequency field directly below any slider and use the adjacent filter c
 
 Each band also has an editable Q value from 0.1 to 20. Q values are processed live and stored with presets.
 
+Use the level-meter button beside the preset controls to show or hide stereo RMS and peak output levels. Metering runs only while the panel is visible and System EQ is processing audio.
+
 Use the band-count stepper above the EQ to add bands or remove the rightmost band. The EQ strip scrolls horizontally beyond ten bands, and custom presets restore their saved band count.
