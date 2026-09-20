@@ -17,11 +17,40 @@ struct ContentView: View {
                 footer
             }
         }
-        .frame(minWidth: 860, idealWidth: 960, minHeight: 590, idealHeight: 660)
+        .frame(minWidth: 560, idealWidth: 960, minHeight: 590, idealHeight: 660)
         .background(WindowMaterialConfigurator())
     }
 
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                brand
+                    .frame(width: 250, alignment: .leading)
+
+                Spacer(minLength: 8)
+                presetControls
+                powerButton
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    brand
+                    Spacer(minLength: 8)
+                    powerButton
+                }
+
+                presetControls
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.45)
+        }
+    }
+
+    private var brand: some View {
         HStack(spacing: 14) {
             Image(systemName: "waveform.path.ecg")
                 .font(.system(size: 18, weight: .semibold))
@@ -34,96 +63,93 @@ struct ContentView: View {
                     .font(.system(size: 22, weight: .semibold))
                 statusLabel
                     .font(.caption)
+                    .lineLimit(1)
             }
+        }
+    }
 
-            Spacer()
-
-            HStack(spacing: 8) {
-                Picker("Preset", selection: presetSelection) {
-                    Section("Built-in") {
-                        ForEach(EQPreset.builtIn) { preset in
+    private var presetControls: some View {
+        HStack(spacing: 8) {
+            Picker("Preset", selection: presetSelection) {
+                Section("Built-in") {
+                    ForEach(EQPreset.builtIn) { preset in
+                        Text(preset.name).tag(preset.id)
+                    }
+                }
+                if !controller.userPresets.isEmpty {
+                    Section("Saved") {
+                        ForEach(controller.userPresets) { preset in
                             Text(preset.name).tag(preset.id)
                         }
                     }
-                    if !controller.userPresets.isEmpty {
-                        Section("Saved") {
-                            ForEach(controller.userPresets) { preset in
-                                Text(preset.name).tag(preset.id)
-                            }
-                        }
-                    }
-                    if controller.selectedPresetID == "custom" {
-                        Text("Custom").tag("custom")
-                    }
                 }
-                .labelsHidden()
-                .frame(width: 170)
+                if controller.selectedPresetID == "custom" {
+                    Text("Custom").tag("custom")
+                }
+            }
+            .labelsHidden()
+            .frame(minWidth: 140, idealWidth: 170, maxWidth: 210)
 
-                Button {
-                    presetName = controller.preset(withID: controller.selectedPresetID)?.name ?? ""
-                    isShowingSavePreset = true
+            Button {
+                presetName = controller.preset(withID: controller.selectedPresetID)?.name ?? ""
+                isShowingSavePreset = true
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .liquidGlass(.clear, interactive: true, in: Circle())
+            .help("Save current settings as a preset")
+            .popover(isPresented: $isShowingSavePreset, arrowEdge: .top) {
+                SavePresetPopover(name: $presetName) {
+                    controller.savePreset(named: presetName)
+                    isShowingSavePreset = false
+                }
+            }
+
+            if controller.userPresets.contains(where: { $0.id == controller.selectedPresetID }) {
+                Button(role: .destructive) {
+                    isShowingDeleteConfirmation = true
                 } label: {
-                    Image(systemName: "square.and.arrow.down")
+                    Image(systemName: "trash")
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
                 .liquidGlass(.clear, interactive: true, in: Circle())
-                .help("Save current settings as a preset")
-                .popover(isPresented: $isShowingSavePreset, arrowEdge: .top) {
-                    SavePresetPopover(name: $presetName) {
-                        controller.savePreset(named: presetName)
-                        isShowingSavePreset = false
-                    }
-                }
-
-                if controller.userPresets.contains(where: { $0.id == controller.selectedPresetID }) {
-                    Button(role: .destructive) {
-                        isShowingDeleteConfirmation = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                    .liquidGlass(.clear, interactive: true, in: Circle())
-                    .help("Delete selected preset")
-                    .confirmationDialog(
-                        "Delete this preset?",
-                        isPresented: $isShowingDeleteConfirmation,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Delete Preset", role: .destructive) {
-                            controller.deleteSelectedPreset()
-                        }
+                .help("Delete selected preset")
+                .confirmationDialog(
+                    "Delete this preset?",
+                    isPresented: $isShowingDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete Preset", role: .destructive) {
+                        controller.deleteSelectedPreset()
                     }
                 }
             }
-            .padding(6)
-            .liquidGlass(.regular, interactive: false, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .padding(6)
+        .liquidGlass(.regular, interactive: false, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
 
-            Button {
-                controller.toggleEngine()
-            } label: {
-                Image(systemName: "power")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 38, height: 38)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(controller.state.isRunning ? Color.orange : Color.green)
-            .liquidGlass(
-                .regular,
-                tint: controller.state.isRunning ? .orange.opacity(0.22) : .green.opacity(0.22),
-                interactive: true,
-                in: Circle()
-            )
-            .disabled(controller.state == .starting)
-            .help(controller.state.isRunning ? "Turn System EQ off" : "Turn System EQ on")
+    private var powerButton: some View {
+        Button {
+            controller.toggleEngine()
+        } label: {
+            Image(systemName: "power")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 38, height: 38)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider().opacity(0.45)
-        }
+        .buttonStyle(.plain)
+        .foregroundStyle(controller.state.isRunning ? Color.orange : Color.green)
+        .liquidGlass(
+            .regular,
+            tint: controller.state.isRunning ? .orange.opacity(0.22) : .green.opacity(0.22),
+            interactive: true,
+            in: Circle()
+        )
+        .disabled(controller.state == .starting)
+        .help(controller.state.isRunning ? "Turn System EQ off" : "Turn System EQ on")
     }
 
     @ViewBuilder
@@ -172,25 +198,36 @@ struct ContentView: View {
                 .liquidGlass(.clear, interactive: true, in: Circle())
                 .help("Reset all bands")
             }
+            .frame(maxWidth: .infinity)
 
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 10) {
-                    ForEach(Array(controller.bands.enumerated()), id: \.element.id) { index, band in
-                        BandSlider(
-                            band: band,
-                            onGainChange: { controller.setGain($0, at: index) },
-                            onFrequencyChange: { controller.setFrequency($0, at: index) },
-                            onFilterChange: { controller.setFilterType($0, at: index) },
-                            onQualityChange: { controller.setQuality($0, at: index) }
-                        )
-                        .frame(width: 70)
+            GeometryReader { geometry in
+                let metrics = BandLayoutMetrics(
+                    availableSize: geometry.size,
+                    bandCount: controller.bands.count
+                )
+
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: metrics.spacing) {
+                        ForEach(Array(controller.bands.enumerated()), id: \.element.id) { index, band in
+                            BandSlider(
+                                band: band,
+                                sliderLength: metrics.sliderLength,
+                                onGainChange: { controller.setGain($0, at: index) },
+                                onFrequencyChange: { controller.setFrequency($0, at: index) },
+                                onFilterChange: { controller.setFilterType($0, at: index) },
+                                onQualityChange: { controller.setQuality($0, at: index) }
+                            )
+                            .frame(width: metrics.bandWidth)
+                        }
                     }
+                    .frame(minWidth: geometry.size.width, alignment: .center)
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 2)
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
+                .scrollIndicators(.never)
             }
             .frame(maxWidth: .infinity)
-            .scrollIndicators(.never)
+            .frame(maxHeight: .infinity)
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 18)
@@ -198,30 +235,53 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 22) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Label("Preamp", systemImage: "dial.medium")
-                        .font(.subheadline.weight(.medium))
-                    Spacer()
-                    Text(String(format: "%+.1f dB", controller.effectivePreamp))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                }
-                Slider(
-                    value: Binding(
-                        get: { Double(controller.preamp) },
-                        set: {
-                            controller.preamp = Float($0)
-                            controller.controlsChanged()
-                        }
-                    ),
-                    in: -12...6,
-                    step: 0.5
-                )
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 22) {
+                preampControl
+                    .frame(width: 290)
+                toggleControls
+                Spacer(minLength: 0)
             }
-            .frame(width: 290)
 
+            VStack(alignment: .leading, spacing: 12) {
+                preampControl
+                toggleControls
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Divider().opacity(0.45)
+        }
+    }
+
+    private var preampControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Preamp", systemImage: "dial.medium")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Text(String(format: "%+.1f dB", controller.effectivePreamp))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(
+                value: Binding(
+                    get: { Double(controller.preamp) },
+                    set: {
+                        controller.preamp = Float($0)
+                        controller.controlsChanged()
+                    }
+                ),
+                in: -12...6,
+                step: 0.5
+            )
+        }
+    }
+
+    private var toggleControls: some View {
+        HStack(spacing: 18) {
             Toggle("Automatic headroom", isOn: Binding(
                 get: { controller.automaticHeadroom },
                 set: {
@@ -239,14 +299,6 @@ struct ContentView: View {
                 }
             ))
             .toggleStyle(.switch)
-
-            Spacer()
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 14)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) {
-            Divider().opacity(0.45)
         }
     }
 
@@ -301,6 +353,7 @@ private struct SavePresetPopover: View {
 
 private struct BandSlider: View {
     let band: EQBand
+    let sliderLength: CGFloat
     let onGainChange: (Float) -> Void
     let onFrequencyChange: (Float) -> Void
     let onFilterChange: (EQFilterType) -> Void
@@ -312,12 +365,14 @@ private struct BandSlider: View {
 
     init(
         band: EQBand,
+        sliderLength: CGFloat,
         onGainChange: @escaping (Float) -> Void,
         onFrequencyChange: @escaping (Float) -> Void,
         onFilterChange: @escaping (EQFilterType) -> Void,
         onQualityChange: @escaping (Float) -> Void
     ) {
         self.band = band
+        self.sliderLength = sliderLength
         self.onGainChange = onGainChange
         self.onFrequencyChange = onFrequencyChange
         self.onFilterChange = onFilterChange
@@ -342,8 +397,8 @@ private struct BandSlider: View {
                 step: 0.5
             )
             .rotationEffect(.degrees(-90))
-            .frame(width: 240, height: 30)
-            .frame(width: 48, height: 250)
+            .frame(width: sliderLength, height: 30)
+            .frame(width: 48, height: sliderLength + 10)
             .disabled(!band.filterType.usesGain)
             .opacity(band.filterType.usesGain ? 1 : 0.42)
 
@@ -429,6 +484,20 @@ private struct BandSlider: View {
         if quality != band.quality {
             onQualityChange(quality)
         }
+    }
+}
+
+private struct BandLayoutMetrics {
+    let spacing: CGFloat = 10
+    let bandWidth: CGFloat
+    let sliderLength: CGFloat
+
+    init(availableSize: CGSize, bandCount: Int) {
+        let count = max(bandCount, 1)
+        let totalSpacing = spacing * CGFloat(max(count - 1, 0))
+        let fittedWidth = (availableSize.width - totalSpacing - 4) / CGFloat(count)
+        bandWidth = min(max(fittedWidth, 62), 88)
+        sliderLength = min(max(availableSize.height - 142, 130), 360)
     }
 }
 
