@@ -10,6 +10,9 @@ struct ContentView: View {
         ZStack {
             TranslucentWindowBackground()
                 .ignoresSafeArea()
+            Color(nsColor: .windowBackgroundColor)
+                .opacity(0.16)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
@@ -49,8 +52,8 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.ultraThinMaterial)
+        .padding(.vertical, 12)
+        .background(.bar)
         .overlay(alignment: .bottom) {
             Divider().opacity(0.45)
         }
@@ -59,14 +62,14 @@ struct ContentView: View {
     private var brand: some View {
         HStack(spacing: 14) {
             Image(systemName: "waveform.path.ecg")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.tint)
-                .frame(width: 38, height: 38)
-                .liquidGlass(.clear, interactive: false, in: Circle())
+                .font(.system(size: 22, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, height: 30)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("System EQ")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.title3.weight(.semibold))
                 statusLabel
                     .font(.caption)
                     .lineLimit(1)
@@ -104,7 +107,7 @@ struct ContentView: View {
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
-            .liquidGlass(.clear, interactive: true, in: Circle())
+            .toolbarIconButton()
             .help("Save current settings as a preset")
             .popover(isPresented: $isShowingSavePreset, arrowEdge: .top) {
                 SavePresetPopover(name: $presetName) {
@@ -121,12 +124,7 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(controller.isLevelMeterVisible ? Color.accentColor : Color.primary)
-            .liquidGlass(
-                .clear,
-                tint: controller.isLevelMeterVisible ? Color.accentColor.opacity(0.2) : nil,
-                interactive: true,
-                in: Circle()
-            )
+            .toolbarIconButton(isActive: controller.isLevelMeterVisible)
             .help(controller.isLevelMeterVisible ? "Hide per-band levels" : "Show per-band levels")
             .accessibilityLabel(controller.isLevelMeterVisible ? "Hide per-band levels" : "Show per-band levels")
 
@@ -138,7 +136,7 @@ struct ContentView: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .liquidGlass(.clear, interactive: true, in: Circle())
+                .toolbarIconButton()
                 .help("Delete selected preset")
                 .confirmationDialog(
                     "Delete this preset?",
@@ -151,8 +149,6 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(6)
-        .liquidGlass(.regular, interactive: false, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var powerButton: some View {
@@ -164,10 +160,10 @@ struct ContentView: View {
                 .frame(width: 38, height: 38)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(controller.state.isRunning ? Color.orange : Color.green)
+        .foregroundStyle(controller.state.isRunning ? Color.accentColor : Color.secondary)
         .liquidGlass(
             .regular,
-            tint: controller.state.isRunning ? .orange.opacity(0.22) : .green.opacity(0.22),
+            tint: controller.state.isRunning ? Color.accentColor.opacity(0.26) : nil,
             interactive: true,
             in: Circle()
         )
@@ -198,8 +194,7 @@ struct ContentView: View {
         VStack(spacing: 16) {
             HStack {
                 Label("Equalizer", systemImage: "slider.vertical.3")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.headline)
                 Spacer()
                 Stepper(
                     "\(controller.bands.count) bands",
@@ -218,7 +213,7 @@ struct ContentView: View {
                         .frame(width: 26, height: 26)
                 }
                 .buttonStyle(.plain)
-                .liquidGlass(.clear, interactive: true, in: Circle())
+                .toolbarIconButton()
                 .help("Reset all bands")
             }
             .frame(maxWidth: .infinity)
@@ -238,6 +233,7 @@ struct ContentView: View {
                                 rmsDecibels: controller.audioLevels.rmsDecibels(at: index),
                                 peakDecibels: controller.audioLevels.peakDecibels(at: index),
                                 showsLevel: controller.isLevelMeterVisible,
+                                showsDivider: index < controller.bands.count - 1,
                                 controlWidth: metrics.controlWidth,
                                 sliderLength: metrics.sliderLength,
                                 onGainChange: { controller.setGain($0, at: index) },
@@ -257,6 +253,12 @@ struct ContentView: View {
                     .padding(.vertical, 2)
                 }
                 .scrollIndicators(.never)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .frame(maxWidth: .infinity)
             .frame(maxHeight: .infinity)
@@ -282,7 +284,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 14)
-        .background(.ultraThinMaterial)
+        .background(.bar)
         .overlay(alignment: .top) {
             Divider().opacity(0.45)
         }
@@ -449,6 +451,7 @@ private struct BandSlider: View {
     let rmsDecibels: Float
     let peakDecibels: Float
     let showsLevel: Bool
+    let showsDivider: Bool
     let controlWidth: CGFloat
     let sliderLength: CGFloat
     let onGainChange: (Float) -> Void
@@ -465,6 +468,7 @@ private struct BandSlider: View {
         rmsDecibels: Float,
         peakDecibels: Float,
         showsLevel: Bool,
+        showsDivider: Bool,
         controlWidth: CGFloat,
         sliderLength: CGFloat,
         onGainChange: @escaping (Float) -> Void,
@@ -476,6 +480,7 @@ private struct BandSlider: View {
         self.rmsDecibels = rmsDecibels
         self.peakDecibels = peakDecibels
         self.showsLevel = showsLevel
+        self.showsDivider = showsDivider
         self.controlWidth = controlWidth
         self.sliderLength = sliderLength
         self.onGainChange = onGainChange
@@ -570,7 +575,14 @@ private struct BandSlider: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 3)
         .frame(maxWidth: .infinity)
-        .liquidGlass(.clear, interactive: false, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(alignment: .trailing) {
+            if showsDivider {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor).opacity(0.55))
+                    .frame(width: 1)
+                    .padding(.vertical, 6)
+            }
+        }
         .onChange(of: band.frequency) { _, newFrequency in
             frequencyText = FrequencyText.format(newFrequency)
         }
@@ -620,6 +632,15 @@ private struct BandLayoutMetrics {
 }
 
 private extension View {
+    func toolbarIconButton(isActive: Bool = false) -> some View {
+        self
+            .contentShape(Circle())
+            .background(
+                isActive ? Color.accentColor.opacity(0.14) : Color.clear,
+                in: Circle()
+            )
+    }
+
     @ViewBuilder
     func liquidGlass<S: Shape>(
         _ glass: GlassStyle,
