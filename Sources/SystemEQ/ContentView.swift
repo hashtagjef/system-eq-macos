@@ -233,7 +233,6 @@ struct ContentView: View {
                                 rmsDecibels: controller.audioLevels.rmsDecibels(at: index),
                                 peakDecibels: controller.audioLevels.peakDecibels(at: index),
                                 showsLevel: controller.isLevelMeterVisible,
-                                showsDivider: index < controller.bands.count - 1,
                                 controlWidth: metrics.controlWidth,
                                 sliderLength: metrics.sliderLength,
                                 onGainChange: { controller.setGain($0, at: index) },
@@ -253,12 +252,6 @@ struct ContentView: View {
                     .padding(.vertical, 2)
                 }
                 .scrollIndicators(.never)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .frame(maxWidth: .infinity)
             .frame(maxHeight: .infinity)
@@ -451,7 +444,6 @@ private struct BandSlider: View {
     let rmsDecibels: Float
     let peakDecibels: Float
     let showsLevel: Bool
-    let showsDivider: Bool
     let controlWidth: CGFloat
     let sliderLength: CGFloat
     let onGainChange: (Float) -> Void
@@ -468,7 +460,6 @@ private struct BandSlider: View {
         rmsDecibels: Float,
         peakDecibels: Float,
         showsLevel: Bool,
-        showsDivider: Bool,
         controlWidth: CGFloat,
         sliderLength: CGFloat,
         onGainChange: @escaping (Float) -> Void,
@@ -480,7 +471,6 @@ private struct BandSlider: View {
         self.rmsDecibels = rmsDecibels
         self.peakDecibels = peakDecibels
         self.showsLevel = showsLevel
-        self.showsDivider = showsDivider
         self.controlWidth = controlWidth
         self.sliderLength = sliderLength
         self.onGainChange = onGainChange
@@ -575,14 +565,7 @@ private struct BandSlider: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 3)
         .frame(maxWidth: .infinity)
-        .overlay(alignment: .trailing) {
-            if showsDivider {
-                Rectangle()
-                    .fill(Color(nsColor: .separatorColor).opacity(0.55))
-                    .frame(width: 1)
-                    .padding(.vertical, 6)
-            }
-        }
+        .liquidGlass(.clear, interactive: false, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .onChange(of: band.frequency) { _, newFrequency in
             frequencyText = FrequencyText.format(newFrequency)
         }
